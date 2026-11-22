@@ -1,0 +1,14 @@
+{
+  "_doc": "Sensor contract file. Your MCU/script writes this JSON. The edge monitor reads it every inference cycle.",
+  "_format": "Either a single JSON object (latest reading) OR a JSON array (edge monitor picks the last element).",
+  "_fields": {
+    "speed_kmh":    "float — vehicle speed in km/h (e.g. 72.5)",
+    "light_lux":    "float — ambient light in lux (e.g. 420.0); daytime ~800, night ~20",
+    "road_surface": "string — one of: dry | wet | slippery",
+    "weather":      "string — one of: clear | rain | fog"
+  },
+  "speed_kmh": 0.0,
+  "light_lux": 1000.0,
+  "road_surface": "dry",
+  "weather": "clear"
+}

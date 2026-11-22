@@ -1,0 +1,63 @@
+# Cloud + Fog + API + DB + Dashboard on one machine.
+#   docker compose up --build
+#   docker compose --profile sim up simulator     # push synthetic traffic through Fog
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-smartdriver}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+      POSTGRES_DB: ${POSTGRES_DB:-smartdriver}
+    volumes: [pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  cloud-api:
+    build: .
+    command: python -m uvicorn cloud.api:app --host 0.0.0.0 --port 8000
+    environment:
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-smartdriver}:${POSTGRES_PASSWORD:-change_me}@db:5432/${POSTGRES_DB:-smartdriver}
+      API_KEY: ${API_KEY:-}
+    depends_on:
+      db: {condition: service_healthy}
+    ports: ["8000:8000"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:8000/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  fog:
+    build: .
+    command: python -m uvicorn fog.gateway:app --host 0.0.0.0 --port 8100
+    environment:
+      CLOUD_URL: http://cloud-api:8000
+      API_KEY: ${API_KEY:-}
+      FOG_ID: fog_001
+      FOG_BUFFER_PATH: /data/fog_buffer.jsonl     # survives Fog restarts
+    volumes: [fogdata:/data]
+    depends_on: [cloud-api]       # NOT service_healthy: Fog must also start/work when Cloud is down
+    ports: ["8100:8100"]
+
+  dashboard:
+    build: .
+    command: streamlit run dashboard/app.py --server.port 8501 --server.address 0.0.0.0
+    environment:
+      CLOUD_URL: http://cloud-api:8000
+      FOG_URL: http://fog:8100
+      API_KEY: ${API_KEY:-}
+    depends_on: [cloud-api, fog]
+    ports: ["8501:8501"]
+
+  simulator:
+    profiles: [sim]
+    build: .
+    command: python -m edge.simulator --fog http://fog:8100 --drivers 3 --count 60 --interval 0.5 --scenario increasing
+    depends_on: [fog]
+
+volumes:
+  pgdata:
+  fogdata:
